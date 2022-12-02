@@ -1,4 +1,4 @@
-# AOC day 1
+# day 1: calories
 require(tidyverse)
 
 # read input
