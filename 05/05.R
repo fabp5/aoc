@@ -8,6 +8,12 @@ example_input <- read_csv("05/example_input.txt",
                           trim_ws = FALSE
                           )
 
+input <- read_csv("05/input.txt",
+                  #skip_empty_rows = FALSE,
+                  col_names = FALSE,
+                  trim_ws = FALSE
+)
+
 input <- example_input
 
 # split the input into the two parts
@@ -22,14 +28,12 @@ moves <- input %>%
 stacks <- map_df(stacks, rev)
 
 # separate into cols
-
-# get number of stacks
-
 name_stacks <- gsub(" ","", stacks$X1[[1]]) %>%
   strsplit(., "") %>%
   unlist() %>%
   paste0("s", .)
   
+# get number of stacks
 num_stacks <- length(name_stacks)
 
 stacks <- stacks %>%
@@ -52,11 +56,34 @@ stacks <- map(stacks, ~ as.character(na.omit(.x)))
 moves <- moves %>%
   mutate(X1 = gsub("move ","",X1)) %>%
   separate(X1, into = c("repeat", "from", "to"), sep = " from | to ") %>%
-  mutate(across(c(from,to), ~ paste0("s", .x)))
+  mutate(across(everything(), as.numeric))
 
 # make a mover function
-
-move_crate <- function(from_crate, to_crate){
+move_crate <- function(stax, from_stack, to_stack){
   
+  crate <- tail(stax[[from_stack]], 1)
   
+  stax[[from_stack]] <- head(stax[[from_stack]], -1)
+  
+  stax[[to_stack]] <- append(stax[[to_stack]], crate)
+ 
+  return(stax)
 }
+
+move_crate_sequence <- function(reps, from, to) {
+  
+  for(i in 1:reps) {
+    stacks <- move_crate(stacks, from, to)
+  }
+ 
+  return(stacks) 
+}
+
+
+for (i in 1:nrow(moves)){
+  stacks <- move_crate_sequence(reps = moves[[1]][i],
+                      from = moves[[2]][i],
+                      to   = moves[[3]][i])
+}
+
+map(stacks, ~ tail(.x, 1)) %>% unlist() %>% paste(collapse = "")
