@@ -76,13 +76,9 @@ map(stacks_p1, ~ tail(.x, 1)) %>% unlist() %>% paste(collapse = "")
 # make a mover function to move multiple crates at once
 
 move_crates_together <- function(stacks, from_stack, to_stack, num_crates){
-  
   crates <- tail(stacks[[from_stack]], num_crates)
-  
   stacks[[from_stack]] <- head(stacks[[from_stack]], -num_crates)
-  
   stacks[[to_stack]] <- append(stacks[[to_stack]], crates)
-  
   return(stacks)
 }
 
