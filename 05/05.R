@@ -2,13 +2,11 @@
 require(tidyverse)
 
 example_input <- read_csv("05/example_input.txt",
-                          #skip_empty_rows = FALSE,
                           col_names = FALSE,
                           trim_ws = FALSE
                           )
 
 input <- read_csv("05/input.txt",
-                  #skip_empty_rows = FALSE,
                   col_names = FALSE,
                   trim_ws = FALSE
 )
