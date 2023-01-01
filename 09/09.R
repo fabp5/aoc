@@ -158,4 +158,4 @@ for(i in 1:80){
 }
 
 # convert to gif with imagemagick
-# magick convert -delay 30 -loop 0 plot/rope*.png rope_animate.gif
+# magick convert -delay 30 -loop 0 -resize 800x800 plot/rope*.png rope_animate.gif
