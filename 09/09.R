@@ -3,48 +3,35 @@
 require(tidyverse)
 require(gganimate)
 
-example_input <- read_table("09/example_input.txt", 
-                            col_names = c("direction", "moves"))
-
 input <- read_table("09/input.txt", 
                     col_names = c("direction", "moves"))
 
-inst <- example_input
+inst <- input %>%
+  uncount(moves)
 
-num_lines <- nrow(inst)
-num_moves <- sum(inst$moves)
-
-# how big is the grid?
-# do I need to calculate it?
+num_moves <- nrow(inst)
 
 # first calculate where the head goes
-
 hx <- 1
 hy <- 1
 
 # function to calculate where the tail is
 move_tail <- function(hp, tp){
-  
   hx <- hp[1]
   hy <- hp[2]
   tx <- tp[1]
   ty <- tp[2]
-  #print(paste("h:",hx, hy, "| t:",tx, ty))
   
   # see if tail doesn't need to move
   if(abs(tx - hx) < 2 & abs(ty - hy) < 2){
-    #print("stay")
     return(c(tx, ty))
-    
   } else {
-    
-   # print("move")
-    
+    # on same line
     if(hx == tx) {
       ty <- ty + sign(hy - ty)
       } else if(hy == ty){
       tx <- tx + sign(hx - tx)
-      # diagonals - if not on the same line either way
+      # diagonals
       } else {
         ty <- ty + sign(hy - ty)
         tx <- tx + sign(hx - tx)
@@ -53,9 +40,7 @@ move_tail <- function(hp, tp){
   return(c(tx, ty))
 }
 
-move_tail(c(4,3),c(2,2))
-
-# requires vector input
+# move head: requires vector input
 move_head_1 <- function(hp, dir) {
   hx <- hp[1]
   hy <- hp[2]
@@ -71,86 +56,106 @@ move_head_1 <- function(hp, dir) {
   return(c(hx,hy))
 }
 
+# set head and tail positions
 hp <- c(1,1)
 tp <- c(1,1)
-tail_positions <- tibble(hx = numeric(num_moves),
+
+rope_positions <- tibble(hx = numeric(num_moves),
                          hy = numeric(num_moves),
                          tx = numeric(num_moves),
                          ty = numeric(num_moves))
   
-move_count <- 0
-for(i in 1:num_lines){
-  
-  for(j in 1:inst$moves[i]){
-    
-    move_count <- move_count + 1
-    
-    hp <- move_head_1(hp, inst$direction[i])
-    #print(hp)
-    tp <- move_tail(hp,tp)
-    tail_positions$hx[move_count] <- hp[1]
-    tail_positions$hy[move_count] <- hp[2]
-    
-    tp <- move_tail(hp,tp)
-    tail_positions$tx[move_count] <- tp[1]
-    tail_positions$ty[move_count] <- tp[2]
-    
-    print(move_count)
-  }
+for(i in 1:num_moves){
+  hp <- move_head_1(hp, inst$direction[i])
+  tp <- move_tail(hp,tp)
+  rope_positions$hx[i] <- hp[1]
+  rope_positions$hy[i] <- hp[2]
+  rope_positions$tx[i] <- tp[1]
+  rope_positions$ty[i] <- tp[2]
 }
 
-n_distinct(select(tail_positions,tx,ty))
+n_distinct(select(rope_positions,tx,ty))
 
-# visualise the rope
-
-test_df <- tibble(
-  x = rep(1:3,3),
-  y = c(1,1,1,2,2,2,3,3,3),
-  bw = c(0,0,0,1,1,0,0,0,0)
-)
-
-tail_positions <- rownames_to_column(tail_positions, "move")
-
-# tile method
-ggplot(test_df, aes(x=x, y=y, fill=bw)) + 
-  geom_tile(colour = "white")
-
-tail_positions_long <- tail_positions %>%
-  pivot_longer(-move,
-               names_to = "head_tail",
-               values_to = "position") %>%
-  separate(head_tail,into = c("head_tail","xy"), sep=1) %>%
-  pivot_wider(id_cols = c(head_tail),
-              names_from = xy,
-              values_from = position)
-
-# scatter method
-pl <- ggplot(tail_positions_long, aes(x = x, y = y, colour = head_tail)) +
-  geom_point(shape = 15, size = 10, alpha = 0.5) +
-  theme_minimal() +
-  transition_states(move) +
-  labs(title = "Move: {frame}")
-
-pl <- ggplot(tail_positions) +
-  geom_point(aes(x = hx, y = hy), shape = 15, size = 10, alpha = 0.5, colour = "red") +
-  geom_point(aes(x = tx, y = ty), shape = 15, size = 10, alpha = 0.5, colour = "blue") +
-  theme_minimal() +
-  transition_states(move) +
-  labs(title = "frame: {frame}")
-
-animate(pl, fps = 2, nframes = 24)
-
+# visualise the rope over the starting moves
 for(i in 1:24){
-  ggplot(tail_positions[i,]) +
+  ggplot(rope_positions[i,]) +
     geom_point(aes(x = hx, y = hy), shape = 15, size = 10, alpha = 0.5, colour = "red") +
     geom_point(aes(x = tx, y = ty), shape = 15, size = 10, alpha = 0.5, colour = "blue") +
     theme_minimal() +
-    xlim(0,6) +
-    ylim(0,6)
-    #transition_states(move) +
-    #labs(title = "frame: {frame}")
-  ggsave(filename = paste0("frame_",i,".png"))
+    xlim(-6,6) +
+    ylim(-6,6) +
+    coord_fixed()
+  ggsave(filename = paste0("09/plot/frame",str_pad(i, width = 2, pad = 0),".png"))
 }
 
-
 # --------- part 2: long rope --------
+
+move_tail_2 <- function(tp, hp){
+  hx <- hp[1]
+  hy <- hp[2]
+  tx <- tp[1]
+  ty <- tp[2]
+  
+  # check if tail doesn't need to move
+  if(abs(tx - hx) < 2 & abs(ty - hy) < 2){
+    return(c(tx, ty))
+  } else {
+    # on same line
+    if(hx == tx) {
+      ty <- ty + sign(hy - ty)
+    } else if(hy == ty){
+      tx <- tx + sign(hx - tx)
+      # diagonals
+    } else {
+      ty <- ty + sign(hy - ty)
+      tx <- tx + sign(hx - tx)
+    }
+  }
+  return(c(tx, ty))
+}
+
+longrope_positions <- rope_positions %>%
+  mutate(hp = map2(hx,hy,c),
+         t1 = map2(tx,ty,c)) %>%
+  rownames_to_column("move")
+
+for (i in 2:9){
+  longrope_positions[[paste0("t",i)]] <- accumulate(longrope_positions[[paste0("t", i-1)]],
+                                                   move_tail_2,
+                                                   .init = c(1,1))[-1]
+}
+
+# get number of positions visited by tail
+n_distinct(longrope_positions$t9)
+
+# visualise the rope
+longrope_positions_l <- longrope_positions[-(2:5)] %>%
+  pivot_longer(-move,
+               names_to = "tail_sec") %>%
+  hoist(value, x = 1, y = 2)
+
+# visualise - gganimate method
+pl2 <- ggplot(longrope_positions_l[1:800, ]) +
+  geom_point(aes(x = x, y = y, colour = tail_sec), shape = 15, size = 8, alpha = 0.5) +
+  theme_void() +
+  xlim(-15, 15) +
+  ylim(-15, 15) +
+  transition_states(move) +
+  labs(title = "frame: {frame}")
+
+animate(pl2, fps = 2, nframes = 80)
+
+# or method to generate frames (first 80 moves)
+for(i in 1:80){
+  ggplot(longrope_positions_l[((i*10)-9):(i*10), ]) +
+    geom_point(aes(x = x, y = y, colour = tail_sec), shape = 15, size = 8, alpha = 0.5) +
+    theme_void() +
+    xlim(-10, 10) +
+    ylim(-15, 5) +
+    theme(legend.position = "none") +
+    coord_fixed()
+  ggsave(filename = paste0("09/plot/rope",str_pad(i, width = 2, pad = 0),".png"))
+}
+
+# convert to gif with imagemagick
+# magick convert -delay 30 -loop 0 plot/rope*.png rope_animate.gif
