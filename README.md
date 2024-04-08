@@ -1,1 +1,6 @@
-My solutions for [Advent of Code](https://adventofcode.com/): [2022](https://adventofcode.com/2022) and [2023](https://adventofcode.com/2023).
+[Advent of Code](https://adventofcode.com/) solutions:
+- [2022](2022)
+- [2023](2023)
+
+[Hanukkah of Data](https://hanukkah.bluebird.sh/) solutions:
+- [Noah's Rug/5784](hanukkah_of_data/README.md)
