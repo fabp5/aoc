@@ -1,0 +1,651 @@
+---
+title: "Hanukkah of data"
+format: gfm
+from: markdown+emoji
+execute:
+  message: false
+editor_options: 
+  chunk_output_type: console
+---
+
+[Hanukkah of data](https://hanukkah.bluebird.sh/5784/) is a set of coding challenges, with similarities to [Advent of Code](https://adventofcode.com/) but more focused on data. It has a puzzle and story-focused feel, and requires some lateral thinking.
+
+:warning: Spoilers for the solutions below!
+
+```{r}
+#| message: false
+# load packages
+library(tidyverse)
+
+# read in the data
+customers <- read_csv("data/small/noahs-customers.csv")
+orders_items <- read_csv("data/small/noahs-orders_items.csv")
+orders <- read_csv("data/small/noahs-orders.csv")
+noahs_products <- read_csv("data/small/noahs-products.csv")
+```
+
+
+## Day 1: The Investigator
+> Sarah brought a cashier over. She said, “Joe here says that one of our customers is a skilled private investigator.”
+> 
+> Joe nodded, “They showed me their business card, and that’s what it said. Skilled Private Investigator. And their phone number was their last name spelled out. I didn’t know what that meant, but apparently before there were smartphones, people had to remember phone numbers or write them down. If you wanted a phone number that was easy-to-remember, you could get a number that spelled something using the letters printed on the phone buttons: like 2 has “ABC”, and 3 “DEF”, etc. And I guess this person had done that, so if you dialed the numbers corresponding to the letters in their name, it would call their phone number!
+> 
+> “I thought that was pretty cool. But I don’t remember their name, or anything else about them for that matter. I couldn’t even tell you if they were male or female.”
+> 
+> Sarah said, “This person seems like they are skilled at investigation. I need them to find Noah’s rug before the Hanukkah dinner. I don’t know how to contact them, but apparently they shop here at Noah’s Market.”
+> 
+> She nodded at the USB drive in your hand.
+> 
+> “Can you find this investigator’s phone number?”
+
+**Target:** someone whose phone number spells out their name in T9.
+
+Apart from the "Jr"s and so on, I noticed some names have 3 names, but these seem to be two first names rather than last names, so I didn't need to worry about them when extracting the last name.
+
+```{r}
+# create t9 lookup and function to convert
+t9 <- tibble(
+  letter = c("abc", "def", "ghi", "jkl", "mno", "pqrs", "tuv", "wxyz"),
+  number = 2:9
+) %>%
+  mutate(letter = str_split(letter, "")) %>%
+  unnest(cols = letter) %>%
+  deframe()
+
+convert_word_to_numbers <- function(word) {
+  if(is.na(word)) return(NA)
+  tolower(word) %>%
+    str_split_1(., "") %>% 
+    map_vec(., ~t9[.x]) %>%
+    paste0(collapse = "")
+}
+
+# some names have "Jr." or "II/III/IV/V"; remove these to get names without suffix
+customers <- customers %>%
+  mutate(name_without_suffix = str_replace(name, " Jr.$", ""),
+         name_without_suffix = str_replace(name, regex(" Jr.$| I$| II$| III$| IV$| V$"), ""),
+         # remove dashes from phone no, and convert last names to numbers
+         phone_raw = phone,
+         phone = str_replace_all(phone_raw, "-", ""),
+         last_name = str_extract(name_without_suffix, "\\w+$"),
+         last_name_numbers = map_vec(last_name, ~ convert_word_to_numbers(.x)),
+         name_eq_phone = phone == last_name_numbers)
+
+# get customer where last name equals phone name pattern
+answer_day1 <- customers %>%
+  filter(name_eq_phone) %>%
+  select(customerid, name, phone_raw)
+
+print(answer_day1)
+```
+
+
+## Day 2: The Contractor
+
+> Thanks to your help, Sarah called the investigator that afternoon. The investigator went directly to the cleaners to see if they could get any more information about the unclaimed rug.
+> 
+> While they were out, Sarah said, “I tried cleaning the rug myself, but there was this snail on it that always seemed to leave a trail of slime behind it. I spent a few hours cleaning it, and the next day the slime trail was back.”
+> 
+> When the investigator returned, they said, “Apparently, this cleaner had a special projects program, where they outsourced challenging cleaning projects to industrious contractors. As they’re right across the street from Noah’s, they usually talked about the project over coffee and bagels at Noah’s before handing off the item to be cleaned. The contractors would pick up the tab and expense it, along with their cleaning supplies.
+> 
+> “So this rug was apparently one of those special projects. The claim ticket said ‘2017 JP’. ‘2017’ is the year the item was brought in, and ‘JP’ is the initials of the contractor.
+> 
+> “But they stopped outsourcing a few years ago, and don’t have contact information for any of these workers anymore.”
+> 
+> Sarah first seemed hopeless, and then glanced at the USB drive you had just put back in her hand. She said, “I know it’s a long shot, but is there any chance you could find their phone number?”
+
+**Target:** someone with the initials JP, who bought cleaning supplies.
+
+```{r}
+
+# do we have cleaning supplies in the product list?
+noahs_products %>%
+  filter(str_detect(desc, "[C|c]lean"))
+
+# yes - we can use this to filter the orders to rug cleaner
+cleaner_orders <- semi_join(orders_items,
+          noahs_products %>%
+            filter(str_detect(desc, "[C|c]lean")),
+          by = "sku")
+
+answer_day2 <- customers %>%
+  filter(str_detect(name_without_suffix, "^J.+ P.+")) %>%
+  inner_join(., orders, by = "customerid") %>%
+  inner_join(., cleaner_orders, by = "orderid") %>% 
+  filter(year(ordered) == 2017) %>%
+  count(customerid, name, citystatezip, phone_raw)
+
+print(answer_day2)
+```
+
+
+## Day 3: The neighbor
+
+> Sarah and the investigator were very impressed with your data skills, as you were able to figure out the phone number of the contractor. They called up the cleaning contractor straight away and asked about the rug.
+> 
+> “Oh, yeah, I did some special projects for them a few years ago. I remember that rug unfortunately. I managed to clean one section, which revealed a giant spider that startled me whenever I tried to work on it.
+> 
+> “I already had a fear of spiders before this, but this spider was so realistic that I had a hard time making any more progress. I kept expecting the cleaners would call for the rug, but they never did. I felt so bad about it, I couldn’t face them, and of course they never gave me another project.
+> 
+> “At last I couldn’t deal with the rug taking up my whole bathtub, so I gave it to this guy who lived in my neighborhood. He said that he was naturally intuitive because he was a Cancer born in the year of the Rabbit, so maybe he was able to clean it.
+> 
+> “I don’t remember his name. Last time I saw him, he was leaving the subway and carrying a bag from Noah’s. I swore I saw a spider on his hat.”
+> 
+> Can you find the phone number of the person that the contractor gave the rug to?
+
+**Target:** someone whose astrological sign is cancer and is born in the year of the rabbit, and who lives in the same neighbourhood as the contractor.
+
+```{r}
+rabbit_years <- c(1927, 1939, 1951, 1963, 1975, 1987, 1999, 2011, 2023)
+
+# he also lives in the same neighbourhood as day 2's contractor, so filter to this
+answer_day3 <- customers %>%
+  filter(year(birthdate) %in% rabbit_years,
+         (month(birthdate) == 6 & day(birthdate) >= 21) |
+           month(birthdate) == 7 & day(birthdate) <= 22,
+         citystatezip == answer_day2$citystatezip) %>%
+  select(customerid, name, phone_raw)
+
+print(answer_day3)
+```
+
+## Day 4: The Early Bird
+
+> The investigator called the phone number you found and left a message, and a man soon called back:
+> 
+> “Wow, that was years ago! It was quite an elegant tapestry.
+> 
+> “It took a lot of patience, but I did manage to get the dirt out of one section, which uncovered a superb owl. I put it up on my wall, and sometimes at night I swear I could hear the owl hooting.
+> 
+> “A few weeks later my bike chain broke on the way home, and I needed to get it fixed before work the next day. Thankfully, this woman I met on Tinder came over at 5am with her bike chain repair kit and some pastries from Noah’s. Apparently she liked to get up before dawn and claim the first pastries that came out of the oven.
+> 
+> “I didn’t have any money or I would’ve paid her for her trouble. She really liked the tapestry, though, so I wound up giving it to her.
+> 
+> “I don’t remember her name or anything else about her.”
+> 
+> Can you find the bicycle fixer’s phone number?
+
+**Target:** someone who bought pastries around 5am, and had a habit of getting up early and buying the first pastries.
+
+It took me a bit of time to narrow this down to a definite candidate. As well as finding someone who bought bakery items before 5am one day, I wanted someone who also got the first items of the day multiple times. Another key was filtering out people who ordered early but had the item *shipped* later, who couldn't be our early riser.
+
+```{r}
+early_pastry_after_biketime <- orders_items %>%
+  filter(str_detect(sku, "BKY")) %>%
+  inner_join(., orders, by = "orderid") %>%
+  filter(ordered > as_date("2017-04-05"),
+         hour(ordered) < 5,
+         hour(shipped) < 5)  %>%
+  filter(ordered == shipped) %>%
+  left_join(., select(customers, customerid, name), by = "customerid")
+
+# are there customers who make a habit of getting the *first* bakery items?
+early_pastry_customers_habitual <- orders_items %>%
+  filter(str_detect(sku, "BKY")) %>%
+  inner_join(., orders, by = "orderid") %>%
+  arrange(ordered) %>%
+  group_by(date(ordered)) %>%
+  slice_min(ordered) %>%
+  ungroup() %>%                                 # now we have first order of bakery item each day
+  filter(hour(ordered) < 7) %>%
+  filter(ordered == shipped) %>%
+  count(customerid) %>%
+  rename(days_ordered_bakery_first = n) %>%     # number of days this person got the first bakery items
+  arrange(desc(days_ordered_bakery_first)) %>%
+  left_join(customers, by = "customerid") %>%
+  filter(days_ordered_bakery_first > 1) %>%     # it must be > 1 because she made a habit of it
+  select(customerid, days_ordered_bakery_first, name, phone, phone_raw)
+
+answer_day4 <- early_pastry_customers_habitual %>%
+  semi_join(early_pastry_after_biketime, by = "customerid") %>%
+  head(1) %>%
+  select(customerid, name, phone_raw)
+
+print(answer_day4)
+```
+
+
+## Day 5: The Cat Lady
+
+> “Yes, I did have that tapestry for a little bit. I even cleaned a blotchy section that turned out to be a friendly koala.
+> 
+> “But it was still really dirty, so when I was going through a Marie Kondo phase, I decided it wasn’t sparking joy anymore.
+> 
+> “I listed it on Freecycle, and a woman in Staten Island came to pick it up. She was wearing a ‘Noah’s Market’ sweatshirt, and it was just covered in cat hair. When I suggested that a clowder of cats might ruin such a fine tapestry, she looked at me funny. She said “I only have ten or eleven cats, and anyway they are getting quite old now, so I doubt they’d care about some old rug.”
+> 
+> “It took her 20 minutes to stuff the tapestry into some plastic bags she brought because it was raining. I spent the evening cleaning my apartment.”
+> 
+> What’s the phone number of the woman from Freecycle?
+
+**Target:** someone with 10 or 11 older cats, and a Noah's market sweatshirt.
+
+I thought the sweatshirt might be necessary, but looking for someone buying a lot of cat food was sufficient.
+
+```{r}
+cat_food_orders_items <- noahs_products %>%
+  filter(str_detect(desc, regex("cat", ignore_case = TRUE))) %>%
+  select(sku) %>%
+  left_join(orders_items, by = "sku") %>%
+  left_join(., orders, by = "orderid")
+
+# find anyone who is buying 10 or more cat food items at once
+answer_day5 <- cat_food_orders_items %>%
+  arrange(desc(qty)) %>%
+  filter(qty >= 10) %>%
+  left_join(customers %>%
+              select(customerid, name, phone_raw),
+            by = "customerid") %>%
+  select(qty, customerid, name, phone_raw) %>%
+  distinct()
+
+print(answer_day5)
+```
+
+## Day 6: The Bargain Hunter
+
+> “Why yes, I did have that rug for a little while in my living room! My cats can’t see a thing but they sure chased after the squirrel on it like it was dancing in front of their noses.
+> 
+> “It was a nice rug and they were surely going to ruin it, so I gave it to my cousin, who was moving into a new place that had wood floors.
+> 
+> “She refused to buy a new rug for herself–she said they were way too expensive. She’s always been very frugal, and she clips every coupon and shops every sale at Noah’s Market. In fact I like to tease her that Noah actually loses money whenever she comes in the store.
+> 
+> “I think she’s been taking it too far lately though. Once the subway fare increased, she stopped coming to visit me. And she’s really slow to respond to my texts. I hope she remembers to invite me to the family reunion next year.”
+> 
+> Can you find her cousin’s phone number?
+
+**Target:** someone frugal who shops sales at Noah's market.
+
+I first tried to look for someone who "shops all the sales"; I considered what could constitute a sale - perhaps when the price of an item had dropped compared to the general trend? After looking into this and not finding such trends, I realised the key is the market losing money, i.e. unit vs wholesale price.
+
+```{r}
+money_loss_orders <- left_join(noahs_products, orders_items, by = "sku") %>%
+  mutate(pricediff = unit_price - wholesale_cost) %>%
+  group_by(orderid) %>%
+  summarise(order_price_diff = sum(pricediff)) %>%
+  arrange(order_price_diff)
+
+left_join(money_loss_orders, orders, by = "orderid") %>%
+  mutate(loss = order_price_diff < 0) %>%
+  group_by(customerid) %>%
+  summarise(n_loss = sum(loss),
+            n_overall = n()) %>%
+    arrange(desc(n_loss))
+# there is a clear candidate here
+
+answer_day6 <- left_join(money_loss_orders, orders, by = "orderid") %>%
+  mutate(loss = order_price_diff < 0) %>%
+  group_by(customerid) %>%
+  summarise(n_loss = sum(loss),
+            n_overall = n()) %>%
+  arrange(desc(n_loss)) %>%
+  head(1) %>%
+  left_join(., customers, by = "customerid") %>%
+  select(customerid, name, phone_raw)
+
+print(answer_day6)
+
+day6_customer <- answer_day6$customerid
+```
+
+## Day 7: The Meet Cute
+
+> “Oh that tapestry, with the colorful toucan on it! I’ll tell you what happened to it.
+> 
+> “One day, I was at Noah’s Market, and I was just about to leave when someone behind me said ‘Miss! You dropped something!’
+> 
+> “Well I turned around to see this cute guy holding an item I had bought. He said, ‘I got the same thing!’ We laughed about it and wound up swapping items because I wanted the color he got. We had a moment when our eyes met and my heart stopped for a second. I asked him to get some food with me and we spent the rest of the day together.
+> 
+> “Before long I moved into his place, but the romance faded quickly, as he wasn’t the prince I imagined. I left abruptly one night, forgetting the tapestry on his wall. But by then, it symbolized our love, and I wanted nothing more to do with it. For all I know, he still has it.”
+> 
+> Can you figure out her ex-boyfriend’s phone number?
+
+**Target:** someone who bought the same item as day 6's bargain-hunter at a similar time, but in a different colour. They also got some food together.
+
+I initially tried including the food they bought, but this turned out to be unnecessary. I started by looking at people who bought the same item on the same day, but needed to filter down by time as well.
+
+```{r}
+# the products with colours have COL in the sku or they have brackets, with a couple of exceptions
+# remove the items that aren't colours
+products_with_colours <- noahs_products %>%
+  filter(str_detect(desc,"\\("),
+         !str_detect(desc, "Jigsaw"),
+         !str_detect(desc, "HO Scale"))
+
+# extract the base item and the colour
+products_with_colours <- products_with_colours %>%
+  mutate(desc_stem = str_replace(desc, regex(" \\(.+\\)"), ""),
+         desc_col  = str_extract(desc, regex("(?<=\\()[^\\)]+(?=\\))")))
+
+orders_with_colours <- products_with_colours %>%
+  select(-c(wholesale_cost, dims_cm)) %>%
+  left_join(orders_items %>%
+              select(-c(qty, unit_price)),
+            by = "sku") %>%
+  left_join(orders,
+            by = "orderid")
+
+# bargain-hunter's items
+bh_orders <- orders_with_colours %>%
+  filter(customerid == day6_customer) %>%
+  filter(ordered == shipped) %>%                # filter to those she picked at the same time as buying
+  select(-c(items, total))
+
+# matching items same day
+bh_candidates <- left_join(bh_orders %>%
+            mutate(ordered_date = date(ordered)) %>%
+            select(-c(orderid)),
+            orders_with_colours %>%
+            filter(customerid != day6_customer,
+                   ordered == shipped) %>%
+            mutate(ordered_date = date(ordered)) %>%
+            select(-c(orderid, items, total)),
+          join_by(desc_stem, ordered_date),
+          suffix = c("_bh", "_ex")) %>%
+  filter(desc_bh != desc_ex) %>%
+  mutate(timediff = abs(ordered_ex - ordered_bh)) %>%
+    left_join(customers %>%
+              select(customerid, name),
+            by = c("customerid_ex" = "customerid")) %>%
+  arrange(timediff) %>%
+  select(desc_bh, desc_ex, ordered_date, customerid_ex, timediff) %>%
+  left_join(customers %>%
+              select(customerid, name, phone_raw),
+            by = c("customerid_ex" = "customerid"))
+
+answer_day7 <- bh_candidates %>%
+  slice(1) %>%
+  select(timediff, customerid_ex, name, phone_raw)
+
+print(answer_day7)
+```
+
+## Day 8: The Collector
+
+> “Oh that damned woman! She moved in, clogged my bathtub, left her coupons all over the kitchen, and then just vanished one night without leaving so much as a note.
+> 
+> Except she did leave behind that nasty carpet. I spent months cleaning one corner, only to discover a snake hiding in the branches! I knew then that she was never coming back, and I had to get it out of my sight.
+> 
+> “Well, I don’t have any storage here, and it didn’t seem right to sell it, so I gave it to my sister. She wound up getting a newer and more expensive carpet, so she gave it to an acquaintance of hers who collects all sorts of junk. Apparently he owns an entire set of Noah’s collectibles! He probably still has the carpet, even.
+> 
+> “My sister is away for the holidays, but I can have her call you in a few weeks.”
+> 
+> The family dinner is tonight! Can you find the collector’s phone number in time?
+
+**Target:** someone who has bought "a full set of collectibles".
+
+I started off making this more complicated than it needed to be. I thought `COL` meant colour, and that a full set of collectibles might be all the variants of a type of `TOY` ("Electric airplane", "Star Wars airplane"), or the opposite (all the "Star Wars" objects). So I looked for anyone who had all items in one of these types of group, but no one had everything.
+
+I then looked into the `COL` items, looking for people who had all the colours of an item. Here I saw there was a single customer who had not only every colour of a group, but of every group ... in fact that was what was meant by a full set of collectibles, and `COL` means collectible!
+
+```{r}
+# which customers have bought everything in the COL category?
+collectibles <- noahs_products %>%
+  select(-c(wholesale_cost, dims_cm)) %>%
+  filter(str_detect(sku, "^COL"))
+num_collectibles <- nrow(collectibles)
+
+answer_day8 <- collectibles %>%
+  left_join(., orders_items %>%
+              select(-c(qty, unit_price)), by = "sku") %>%
+  left_join(., orders %>%
+              select(-c(ordered, shipped, items, total)),
+            by = "orderid") %>%
+  select(-orderid) %>%
+  distinct() %>%
+  count(customerid) %>%
+  filter(n == num_collectibles) %>%
+  # get the customer's details
+  left_join(., customers %>%
+              select(customerid, name, phone_raw),
+            by = "customerid")
+
+print(answer_day8)
+
+```
+
+
+## Speedrun
+
+After completing all the puzzles, there was a challenge to complete them again as fast as possible with a new larger dataset.
+
+I didn't expect the text to differ so things like the neighbour's astrological and zodiac signs changing slowed me down! If I were to super-speedrun it again, I could create functions to allow input of any initials or astrological/zodiac signs.
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+#| message: false
+#| output: false
+
+customers <- read_csv("data/speedrun/noahs-customers.csv")
+orders_items <- read_csv("data/speedrun/noahs-orders_items.csv")
+orders <- read_csv("data/speedrun/noahs-orders.csv")
+noahs_products <- read_csv("data/speedrun/noahs-products.csv")
+
+# day 1 ------------------------------------------------------------------------
+# create t9 lookup and function to convert
+t9 <- tibble(
+  letter = c("abc", "def", "ghi", "jkl", "mno", "pqrs", "tuv", "wxyz"),
+  number = 2:9
+) %>%
+  mutate(letter = str_split(letter, "")) %>%
+  unnest(cols = letter) %>%
+  deframe()
+
+convert_word_to_numbers <- function(word) {
+  if(is.na(word)) return(NA)
+  tolower(word) %>%
+    str_split_1(., "") %>% 
+    map_vec(., ~t9[.x]) %>%
+    paste0(collapse = "")
+}
+
+# some names have "Jr." or "II/III/IV/V"; remove these to get names without suffix
+customers <- customers %>%
+  mutate(name_without_suffix = str_replace(name, " Jr.$", ""),
+         name_without_suffix = str_replace(name, regex(" Jr.$| I$| II$| III$| IV$| V$"), ""),
+         # remove dashes from phone no, and convert last names to numbers
+         phone_raw = phone,
+         phone = str_replace_all(phone_raw, "-", ""),
+         last_name = str_extract(name_without_suffix, "\\w+$"),
+         last_name_numbers = map_vec(last_name, ~ convert_word_to_numbers(.x)),
+         name_eq_phone = phone == last_name_numbers)
+
+# get customer where last name equals phone name pattern
+answer_day1 <- customers %>%
+  filter(name_eq_phone) %>%
+  select(customerid, name, phone_raw)
+
+print(answer_day1)
+
+# day 2 ------------------------------------------------------------------------
+# filter the orders to rug cleaner
+cleaner_orders <- semi_join(orders_items,
+          noahs_products %>%
+            filter(str_detect(desc, "[C|c]lean")),
+          by = "sku")
+
+# beware, the initials ahve changed!
+answer_day2 <- customers %>%
+  filter(str_detect(name_without_suffix, "^D.+ S.+")) %>%
+  inner_join(., orders, by = "customerid") %>%
+  inner_join(., cleaner_orders, by = "orderid") %>% 
+  filter(year(ordered) == 2017) %>%
+  count(customerid, name, citystatezip, phone_raw)
+
+print(answer_day2)
+
+# day 3 ------------------------------------------------------------------------
+# we need to change the zodiac and astrological signs
+goat_years <- c(1931, 1943, 1955, 1967, 1979, 1991, 2003, 2015, 2027)
+
+# he also lives in the same neighbourhood as day 2's contractor, so filter to this
+answer_day3 <- customers %>%
+  filter(year(birthdate) %in% goat_years,
+         (month(birthdate) == 9 & day(birthdate) >= 23) |
+           month(birthdate) == 10 & day(birthdate) <= 22,
+         citystatezip == answer_day2$citystatezip) %>%
+  select(customerid, name, phone_raw)
+
+print(answer_day3)
+
+# day 4 ------------------------------------------------------------------------
+early_pastry_after_biketime <- orders_items %>%
+  filter(str_detect(sku, "BKY")) %>%
+  inner_join(., orders, by = "orderid") %>%
+  filter(ordered > as_date("2017-04-05"),
+         hour(ordered) < 5,
+         hour(shipped) < 5)  %>%
+  filter(ordered == shipped) %>%
+  left_join(., select(customers, customerid, name), by = "customerid")
+
+# are there customers who make a habit of getting the *first* bakery items?
+early_pastry_customers_habitual <- orders_items %>%
+  filter(str_detect(sku, "BKY")) %>%
+  inner_join(., orders, by = "orderid") %>%
+  arrange(ordered) %>%
+  group_by(date(ordered)) %>%
+  slice_min(ordered) %>%
+  ungroup() %>%                                 # now we have first order of bakery item each day
+  filter(hour(ordered) < 7) %>%
+  filter(ordered == shipped) %>%
+  count(customerid) %>%
+  rename(days_ordered_bakery_first = n) %>%     # number of days this person got the first bakery items
+  arrange(desc(days_ordered_bakery_first)) %>%
+  left_join(customers, by = "customerid") %>%
+  filter(days_ordered_bakery_first > 1) %>%     # it must be > 1 because she made a habit of it
+  select(customerid, days_ordered_bakery_first, name, phone, phone_raw)
+
+answer_day4 <- early_pastry_customers_habitual %>%
+  semi_join(early_pastry_after_biketime, by = "customerid") %>%
+  head(1) %>%
+  select(customerid, name, phone_raw)
+
+print(answer_day4)
+
+# day 5 ------------------------------------------------------------------------
+cat_food_orders_items <- noahs_products %>%
+  filter(str_detect(desc, regex("cat", ignore_case = TRUE))) %>%
+  select(sku) %>%
+  left_join(orders_items, by = "sku") %>%
+  left_join(., orders, by = "orderid")
+
+# find anyone who is buying 10 or more cat food items at once
+answer_day5 <- cat_food_orders_items %>%
+  arrange(desc(qty)) %>%
+  filter(qty >= 10) %>%
+  left_join(customers %>%
+              select(customerid, name, phone_raw),
+            by = "customerid") %>%
+  select(qty, customerid, name, phone_raw) %>%
+  distinct()
+
+print(answer_day5)
+
+# day 6 ------------------------------------------------------------------------
+money_loss_orders <- left_join(noahs_products, orders_items, by = "sku") %>%
+  mutate(pricediff = unit_price - wholesale_cost) %>%
+  group_by(orderid) %>%
+  summarise(order_price_diff = sum(pricediff)) %>%
+  arrange(order_price_diff)
+
+left_join(money_loss_orders, orders, by = "orderid") %>%
+  mutate(loss = order_price_diff < 0) %>%
+  group_by(customerid) %>%
+  summarise(n_loss = sum(loss),
+            n_overall = n()) %>%
+    arrange(desc(n_loss))
+
+answer_day6 <- left_join(money_loss_orders, orders, by = "orderid") %>%
+  mutate(loss = order_price_diff < 0) %>%
+  group_by(customerid) %>%
+  summarise(n_loss = sum(loss),
+            n_overall = n()) %>%
+  arrange(desc(n_loss)) %>%
+  head(1) %>%
+  left_join(., customers, by = "customerid") %>%
+  select(customerid, name, phone_raw)
+
+print(answer_day6)
+
+day6_customer <- answer_day6$customerid
+
+# day 7 ------------------------------------------------------------------------
+# the products with colours have COL in the sku or they have brackets, with a couple of exceptions
+# remove the items that aren't colours
+products_with_colours <- noahs_products %>%
+  filter(str_detect(desc,"\\("),
+         !str_detect(desc, "Jigsaw"),
+         !str_detect(desc, "HO Scale"))
+
+# extract the base item and the colour
+products_with_colours <- products_with_colours %>%
+  mutate(desc_stem = str_replace(desc, regex(" \\(.+\\)"), ""),
+         desc_col  = str_extract(desc, regex("(?<=\\()[^\\)]+(?=\\))")))
+
+orders_with_colours <- products_with_colours %>%
+  select(-c(wholesale_cost, dims_cm)) %>%
+  left_join(orders_items %>%
+              select(-c(qty, unit_price)),
+            by = "sku") %>%
+  left_join(orders,
+            by = "orderid")
+
+# bargain-hunter's items
+bh_orders <- orders_with_colours %>%
+  filter(customerid == day6_customer) %>%
+  filter(ordered == shipped) %>%                # filter to those she picked at the same time as buying
+  select(-c(items, total))
+
+# matching items same day
+bh_candidates <- left_join(bh_orders %>%
+            mutate(ordered_date = date(ordered)) %>%
+            select(-c(orderid)),
+            orders_with_colours %>%
+            filter(customerid != day6_customer,
+                   ordered == shipped) %>%
+            mutate(ordered_date = date(ordered)) %>%
+            select(-c(orderid, items, total)),
+          join_by(desc_stem, ordered_date),
+          suffix = c("_bh", "_ex")) %>%
+  filter(desc_bh != desc_ex) %>%
+  mutate(timediff = abs(ordered_ex - ordered_bh)) %>%
+    left_join(customers %>%
+              select(customerid, name),
+            by = c("customerid_ex" = "customerid")) %>%
+  arrange(timediff) %>%
+  select(desc_bh, desc_ex, ordered_date, customerid_ex, timediff) %>%
+  left_join(customers %>%
+              select(customerid, name, phone_raw),
+            by = c("customerid_ex" = "customerid"))
+
+answer_day7 <- bh_candidates %>%
+  slice(1) %>%
+  select(timediff, customerid_ex, name, phone_raw)
+
+print(answer_day7)
+
+# day 8 ------------------------------------------------------------------------
+# which customers have bought everything in the COL category?
+collectibles <- noahs_products %>%
+  select(-c(wholesale_cost, dims_cm)) %>%
+  filter(str_detect(sku, "^COL"))
+num_collectibles <- nrow(collectibles)
+
+answer_day8 <- collectibles %>%
+  left_join(., orders_items %>%
+              select(-c(qty, unit_price)), by = "sku") %>%
+  left_join(., orders %>%
+              select(-c(ordered, shipped, items, total)),
+            by = "orderid") %>%
+  select(-orderid) %>%
+  distinct() %>%
+  count(customerid) %>%
+  filter(n == num_collectibles) %>%
+  # get the customer's details
+  left_join(., customers %>%
+              select(customerid, name, phone_raw),
+            by = "customerid")
+
+print(answer_day8)
+```
+
